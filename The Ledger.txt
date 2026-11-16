@@ -1,0 +1,552 @@
+# Project: The Ledger — Multiplayer Inventory Management System
+
+## Your task
+
+Build a complete, functional, responsive web application called **The Ledger**.
+
+The Ledger is a server-authoritative inventory and asset transfer system designed for multiplayer roleplaying games.
+
+It is NOT a game engine. Do not introduce combat, character statistics, quests, crafting, movement, maps, or other gameplay systems unless explicitly requested.
+
+The system exists to let a Gamemaster (GM) manage players, roles, inventory items, currencies, and asset ownership, while allowing players to organize inventories and donate assets to other roles.
+
+**The server is the absolute single source of truth.** The browser must never be trusted to determine ownership, quantities, transfer results, or permissions.
+
+Build the application using React and TypeScript, with a persistent server-side database and a real backend.
+
+The completed application must work in modern desktop and mobile browsers.
+
+---
+
+# 1. Fundamental concepts
+
+## Players
+- Each player has an individual account with a username and password issued by the GM.
+- Each player may be assigned to at most one role at a time.
+- Multiple players may share the same role.
+- Players assigned to the same role share exactly the same inventory.
+- Every action must be attributable to the individual player who performed it.
+
+## Roles
+- A role is an identity within the game, such as a character, noble house, kingdom, organization, or faction.
+- Each role has exactly one inventory.
+- Roles exist independently of player accounts.
+- The GM may create, rename, duplicate, delete, and assign roles.
+- A role may have zero, one, or multiple players assigned.
+- Unassigned players may log in but cannot perform inventory actions until assigned.
+
+## Inventories
+- Every role owns its own persistent inventory.
+- The inventory may contain stackable items, unique items, and currency balances.
+- Inventories have no fixed capacity.
+- Inventory ownership and contents are stored on the server.
+
+---
+
+# 2. Inventory interface
+
+Create a visually clean, intuitive inventory interface.
+
+### Grid
+- Use a grid layout displaying approximately five columns and five rows on a typical desktop viewport.
+- The inventory must support an unlimited number of items through virtualized or incremental scrolling.
+- Adapt the number of columns automatically to narrower screens.
+- Show an item image or placeholder, item name, and stack quantity.
+- For example, five bricks should appear as one item with a visible "×5" overlay.
+- Unique items must be displayed individually.
+- Allow users to click or tap an item to inspect its details.
+
+### Organization
+- Allow users to rearrange items manually using drag-and-drop.
+- Make manual arrangement persistent and shared by all players controlling that role.
+- Provide sorting by:
+  - Name, ascending and descending
+  - Quantity, ascending and descending
+  - Most recently acquired
+  - Least recently acquired
+  - Custom manual order
+- Automatic sorting must not destroy the saved custom arrangement.
+- Display a clear indication of the active sorting mode.
+
+### Responsive behavior
+- Desktop: full grid and drag-and-drop functionality.
+- Mobile: smaller responsive grid with touch-friendly controls.
+- Provide a tap-based method for moving and selecting items so mobile users are not dependent on drag-and-drop.
+- Avoid horizontal overflow.
+
+---
+
+# 3. Items
+
+The GM can create reusable item definitions.
+
+Each definition contains:
+- Unique internal ID
+- Name
+- Description
+- Optional image
+- Stackable or unique designation
+
+### Stackable items
+- Identical definitions combine into a stack.
+- The quantity must be a positive integer.
+- Quantities decrease and increase through authorized server operations.
+- Removing the final unit removes the stack from the displayed inventory.
+
+### Unique items
+- Each unique item has its own internal instance ID.
+- Unique items cannot stack.
+- Multiple unique instances may use the same definition.
+- Unique items can be donated, moved, created, or deleted by the GM.
+
+### Land deeds
+- Deeds are ordinary inventory items, not a separate land-management system.
+- They may be implemented as unique items named after the relevant property.
+- Their ownership is represented by the role that possesses the item.
+- Do not introduce geographical mapping, property databases, or legal ownership logic.
+
+---
+
+# 4. Currencies and abstract resources
+
+The GM may define an unlimited number of currencies or resources.
+
+Examples include:
+- Money
+- Gold
+- Political power
+- Influence
+- Prestige
+
+Each currency definition contains:
+- Unique ID
+- Name
+- Optional icon
+- Integer or decimal precision
+- Optional minimum and maximum
+- Optional visual gauge configuration
+
+### Interface
+- Display resource balances separately from regular inventory item cards.
+- Every currency displays a numerical amount.
+- Optionally display a gauge or dial indicating its value relative to its configured range.
+- Where no maximum exists, display a numerical balance without implying a full or empty gauge.
+- Provide a donation control for each currency.
+- Players cannot directly edit their balances.
+- The GM may create, adjust, subtract, reset, or delete currency balances.
+
+Currency transfers must use exact numeric calculations, avoiding floating-point rounding errors.
+
+---
+
+# 5. Donation system
+
+There must be a prominent, easily accessible **Donate** button.
+
+Players may donate items or currencies to another role.
+
+Implement two distinct donation workflows.
+
+## Workflow A: Item-first donation
+
+1. The player finds an item or currency.
+2. The player selects Donate.
+3. A donation interface opens.
+4. The player chooses a recipient role.
+5. The player chooses the amount to donate.
+6. The server validates ownership and available quantity.
+7. The player confirms the donation.
+8. The server reserves the selected assets.
+9. A visible five-second cancellation countdown begins.
+10. If the sender cancels before the deadline, the reservation is released.
+11. Otherwise, proceed according to the server's recipient-approval setting.
+
+The countdown must:
+- Be clearly visible.
+- Use a small circular timer or dial.
+- Display the remaining seconds.
+- Include an obvious Cancel button.
+- Continue to be enforced by the server even if the browser disconnects.
+
+## Workflow B: Recipient-first donation
+
+1. The player selects Donate.
+2. The player searches for a recipient role by name.
+3. The player selects the role.
+4. A donation composition interface appears.
+5. The player can drag multiple items into the donation area.
+6. The player can also add items using tap/click controls.
+7. The player specifies quantities for stackable items and currencies.
+8. The interface shows everything being donated.
+9. The player confirms the donation.
+10. The server reserves all included assets in one atomic operation.
+11. The player gets the same five-second cancellation opportunity.
+12. The donation then proceeds according to the approval setting.
+
+A multi-item donation must be treated as one transaction. It must not partially succeed.
+
+## Donation rules
+
+- Donations go to roles, not individual player accounts.
+- A role cannot donate to itself.
+- A player cannot donate more than the role owns.
+- Reserved assets cannot be included in another donation.
+- Each donation receives a unique transaction ID.
+- The server timestamps and authorizes every operation.
+- Concurrent requests must not allow duplication or negative balances.
+- The frontend must reflect actual server state.
+
+## Recipient approval
+
+The GM can enable or disable mandatory donation acceptance at the server level.
+
+When approval is disabled:
+- Donations finalize automatically after the cancellation period.
+
+When approval is enabled:
+- The donation enters a pending state after the cancellation period.
+- Any authorized player controlling the recipient role may accept or reject it.
+- Acceptance completes the transfer.
+- Rejection releases the reserved assets to the sender.
+- Multiple players must not be able to resolve the same donation twice.
+
+Provide a recipient inbox for pending donations.
+
+Use server-side deadlines and transaction state transitions, not browser timers, as the authoritative mechanism.
+
+---
+
+# 6. Gamemaster dashboard
+
+Create a dedicated GM interface.
+
+The GM has unrestricted administrative control over the inventory system.
+
+### Player management
+- Create player accounts.
+- Issue and reset account passwords.
+- Search players by username.
+- Assign or unassign roles.
+- View which players control each role.
+- Disable player accounts when required.
+
+### Role management
+- Create roles.
+- Rename roles.
+- Search and browse roles.
+- Assign multiple players to one role.
+- Duplicate roles.
+- Delete roles with explicit confirmation.
+- Open and edit any role's inventory.
+
+### Role duplication
+
+When duplicating a role:
+- Create a new independent role.
+- Copy its name with a distinguishable default suffix.
+- Duplicate all inventory contents and quantities.
+- Duplicate all currency balances.
+- Duplicate the inventory's custom arrangement.
+- Create new item-instance IDs for every copied unique item.
+- Do not automatically copy player assignments.
+- Do not alter the original role.
+
+### Item management
+- Create, edit, and delete item definitions.
+- Upload or select item images.
+- Add items to any role inventory.
+- Remove items from any inventory.
+- Change stack quantities.
+- Move items between role inventories.
+- Create and remove unique item instances.
+
+### Currency management
+- Define new currencies.
+- Edit currency settings.
+- Adjust balances for any role.
+- Transfer currency between roles.
+- View currency balances across roles.
+
+### Transactions and administration
+- Inspect the complete transaction history.
+- Filter history by player, role, asset, action type, and date.
+- Distinguish donations from direct GM operations.
+- Inspect cancelled, pending, rejected, and completed donations.
+- Record GM actions in the same audit system.
+- Prevent editing or deleting existing audit records through the normal application interface.
+
+The transaction history must be accessible only to the GM.
+
+Players may see their own current balances and pending donation states, but must not have access to the permanent audit history.
+
+---
+
+# 7. Server architecture
+
+Use a genuine server-authoritative architecture.
+
+Recommended technologies:
+- React with TypeScript
+- Vite for the frontend
+- Node.js with TypeScript for the backend
+- Fastify or Express for the API
+- PostgreSQL for online hosting
+- SQLite as a supported local deployment option
+- Prisma or another migration-capable database layer
+- WebSockets for live updates
+
+You may suggest alternatives if they materially improve reliability or deployment simplicity.
+
+### Required backend responsibilities
+- Authenticate accounts.
+- Authorize every operation.
+- Enforce player-role assignments.
+- Store all item and currency ownership.
+- Validate and execute transactions.
+- Reserve assets during pending donations.
+- Enforce donation cancellation deadlines.
+- Process acceptance and rejection.
+- Manage all GM operations.
+- Write permanent audit records.
+- Broadcast relevant changes to connected clients.
+
+The server must never trust client-submitted quantities, permissions, timestamps, or ownership claims.
+
+### Shared inventories
+
+When multiple players control the same role:
+- All clients receive live inventory updates.
+- A change performed by one player appears for the others.
+- Conflicting operations are resolved on the server.
+- Shared roles must never lead to duplicate item transfers.
+
+---
+
+# 8. Persistence and data model
+
+Design a normalized database with clear relationships.
+
+At minimum, support:
+- Player accounts
+- Roles
+- Player-to-role assignments
+- Inventory records
+- Item definitions
+- Unique item instances
+- Item quantities
+- Currency definitions
+- Currency balances
+- Saved custom inventory ordering
+- Donation transactions
+- Donation line items
+- Asset reservations
+- Transaction audit events
+- GM configuration
+
+Use database transactions and appropriate concurrency protection for all ownership changes.
+
+Use proper password hashing and secure authenticated sessions.
+
+Preserve transaction history even when items, roles, or accounts are administratively removed.
+
+---
+
+# 9. Local and online deployment
+
+The application must support two modes.
+
+## Local mode
+- The GM runs the backend on a computer.
+- Players access the application through a browser over the local network.
+- The application can operate without an internet connection once dependencies and assets are installed.
+- Provide straightforward local startup instructions.
+- Ensure the server can be configured to listen on a LAN-accessible network interface.
+
+## Online mode
+- The same application can run on an internet-accessible host.
+- Use environment variables for database connections, application addresses, credentials, and server configuration.
+- Support multiple simultaneous connected players.
+- Use secure connections in production.
+
+Local and online deployments are independent installations. Do not build automatic synchronization between them.
+
+Provide instructions for both deployment options.
+
+---
+
+# 10. Interface design
+
+Build a cohesive, polished, responsive interface.
+
+Prioritize:
+- Immediate clarity
+- Fast item searching
+- Minimal interaction steps
+- Large enough touch targets for phones
+- Recognizable item images
+- Obvious quantity displays
+- Clear resource gauges
+- Visual donation feedback
+- Consistent loading, success, and error states
+
+### Player interface
+
+Main sections:
+1. My Inventory
+2. Resources
+3. Donate
+4. Pending Donations (when relevant)
+
+The primary focus should always be the inventory.
+
+### GM interface
+
+Main sections:
+1. Overview
+2. Players
+3. Roles
+4. Inventories
+5. Item Definitions
+6. Currencies
+7. Transactions
+8. Settings
+
+Avoid unnecessary navigation complexity.
+
+---
+
+# 11. Security and consistency
+
+Enforce the following invariants:
+
+- Each player has at most one assigned role.
+- A role may have multiple assigned players.
+- Every inventory belongs to exactly one role.
+- Ownership cannot change without an authorized server operation.
+- No asset can be transferred twice.
+- Donations cannot transfer reserved assets.
+- Cancellation is only possible before the server deadline.
+- Every donation resolves to a valid final state.
+- Currency values must respect their configured limits.
+- Ordinary players cannot access GM endpoints.
+- GM-only audit history is protected on the backend.
+- All mutations are validated and persisted server-side.
+
+Provide safeguards for disconnects, duplicate requests, concurrent transfers, and server restarts.
+
+---
+
+# 12. Testing
+
+Implement meaningful automated tests covering:
+
+- Player authentication
+- Role assignment restrictions
+- Shared-role inventory access
+- Item stacking
+- Unique item transfers
+- Currency transfers
+- Five-second donation cancellation
+- Automatic donation completion
+- Recipient approval and rejection
+- Concurrent donation attempts
+- Multi-item donation atomicity
+- Role duplication
+- GM permissions
+- Persistent custom sorting
+- Server restart during pending donations
+
+Tests should validate actual backend behavior rather than only frontend presentation.
+
+---
+
+# 13. Implementation process
+
+Do not stop after creating visual mockups.
+
+Build the functional application in logical stages:
+
+**Stage 1 — Foundation**
+Set up React, backend, database, authentication, roles, and permissions.
+
+**Stage 2 — Inventory**
+Implement item definitions, ownership, stacks, unique items, currencies, scrolling, sorting, and persistent arrangement.
+
+**Stage 3 — Donations**
+Implement both donation workflows, server-managed reservations, cancellation, recipient approval, and live updates.
+
+**Stage 4 — GM dashboard**
+Implement player management, role management, duplication, full inventory editing, and transaction history.
+
+**Stage 5 — Deployment and testing**
+Complete local and online deployment configuration, responsive layouts, automated tests, and documentation.
+
+At every stage, prioritize functioning features backed by persistent server data over simulated frontend behavior.
+
+If a requirement is unclear, identify the ambiguity and adopt the simplest behavior consistent with the specification. Document those assumptions.
+
+---
+
+# 14. Definition of done
+
+The application is complete when:
+
+1. The GM can start a server, create accounts, and assign roles.
+2. Players can log in and access their assigned role inventory.
+3. Multiple players controlling one role see the same live inventory.
+4. Items stack correctly, and unique items remain separate.
+5. Currencies display correct numerical balances and optional gauges.
+6. Inventories support scrolling, searching, sorting, and persistent custom ordering.
+7. Both donation workflows work with real server-side transactions.
+8. Every donation has a server-enforced five-second cancellation period.
+9. Recipient approval works when enabled.
+10. The GM can create, delete, move, edit, and duplicate assets and roles.
+11. The GM can inspect a permanent transaction history.
+12. The application works on mobile and desktop browsers.
+13. The system can be run locally or deployed online.
+14. All inventory state survives a server restart.
+15. Automated tests pass for all critical ownership and transaction rules.
+
+Do not add unrelated game systems.
+
+**Build a reliable, focused inventory system, not a general-purpose roleplaying platform.**
+
+## Finalized donation and inventory rules — v1.1
+
+### Recipient approval deadline
+
+If recipient approval is enabled, the system must provide a **five-minute approval window**, beginning immediately after the sender's five-second cancellation window expires.
+
+- The recipient role's players receive a real-time pending donation notification.
+- The donation appears in the recipient's pending donations inbox.
+- Display a countdown indicating the remaining approval time.
+- Any authorized player assigned to the recipient role can accept or reject the donation.
+- If accepted before the deadline, the server atomically transfers all reserved assets.
+- If rejected, the server releases all reserved assets to the sending role.
+- If no action is taken within five minutes, the server automatically rejects the donation and releases all reserved assets.
+- Assets remain reserved throughout both countdown periods.
+- Once resolved, a donation cannot be accepted, rejected, or cancelled again.
+- Timers are server-authoritative and must survive browser disconnections and server restarts.
+- The server must ensure that approval arriving after the deadline cannot complete the transfer.
+
+### Role duplication
+
+Duplicating a role creates an exact independent copy of its inventory, including all stackable items, unique items, currency balances, and saved custom ordering.
+
+Every duplicated unique item receives a new internal instance ID, while retaining the original item's visible properties.
+
+Player assignments and pending transactions are not duplicated.
+
+### Persistent sorting
+
+The custom item layout is stored persistently for each role. Automatic sorts by name, quantity, or acquisition recency are temporary display modes and never overwrite the custom layout.
+
+### Shared-role concurrency
+
+All players assigned to the same role share one authoritative inventory and receive real-time updates.
+
+Every server operation must be transactional, preventing conflicting donations, double spending, item duplication, and inconsistent balances.
+
+### Default approval configuration
+
+The GM controls a single server-wide setting determining whether recipient approval is required. Automatic acceptance is the default.
